@@ -90,13 +90,38 @@
   .readbtn:active{transform:scale(.96);}
   .readbtn.speaking{background:var(--accent); color:#fff; border-color:var(--accent);}
 
+  /* 全局朗读控制条 */
+  .globalbar{position:sticky; top:0; z-index:60; background:var(--accent); color:#fff;
+    padding:11px 16px; display:flex; align-items:center; gap:12px; font-size:15px;
+    box-shadow:0 2px 8px rgba(59,110,245,.3);}
+  .globalbar .st{flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:.95;}
+  .globalbar button{border:none; background:rgba(255,255,255,.22); color:#fff; font-size:15px;
+    font-weight:600; padding:9px 18px; border-radius:12px; cursor:pointer; white-space:nowrap;}
+  .globalbar button:active{background:rgba(255,255,255,.35);}
+  .globalbar.idle{background:#2b3240;}
+  body.hasglobal .globalbar{display:flex;}
+
+  /* 全文朗读悬浮按钮 */
+  .fab{position:fixed; right:16px; bottom:22px; z-index:70; border:none; cursor:pointer;
+    background:var(--accent); color:#fff; font-size:15px; font-weight:600;
+    padding:13px 18px; border-radius:999px; box-shadow:0 4px 14px rgba(59,110,245,.4);}
+  .fab.speaking{background:#e8590c;}
+  body.hasglobal .fab{display:block;}
+
   footer{margin-top:48px; padding-top:20px; border-top:1px solid var(--line);
     color:var(--sub); font-size:13.5px; text-align:center; line-height:1.9;}
   footer .lk{color:var(--accent); text-decoration:none;}
   @media (min-width:700px){ li.card{padding:18px 20px;} }
+  /* 支持语音的浏览器才显示全局朗读控件 */
+  body:not(.hasglobal) .globalbar{display:none;}
+  body:not(.hasglobal) .fab{display:none;}
 </style>
 </head>
 <body>
+<div class="globalbar idle" id="globalbar">
+  <span class="st" id="gstate">全文朗读已就绪 · 点右下角按钮开始</span>
+  <button id="gbtn" type="button">▶ 全文朗读</button>
+</div>
 <div class="wrap">
   <header>
     <span class="kicker"><span class="dot"></span>DAILY AI BRIEF</span>
@@ -214,14 +239,15 @@
 
   <footer>
     内容聚合自公开网络信息 · 点击标题可跳转原文<br>
-    每条右侧 <b>🔊 朗读</b> 按钮可用浏览器语音播报（再点一次停止）<br>
+    右下角 <b>▶ 全文朗读</b>：把今天所有新闻从头读到尾；每条右侧 <b>🔊</b> 单读一条<br>
     由 AI 每日 07:00 自动生成 · 固定链接 <a class="lk" href="https://1783243818.github.io/">1783243818.github.io</a><br>
     2026-11-11
   </footer>
 </div>
+<button class="fab" id="fab" type="button">▶ 全文朗读</button>
 <script>
 (function(){
-  // 微信引导：分享给微信的按钮
+  // 微信引导
   function shareWx(){
     var url = location.origin + location.pathname + '?wxopen=1';
     if (navigator.share && navigator.share.url !== undefined) {
@@ -231,16 +257,16 @@
       tmp.value = url; document.body.appendChild(tmp);
       try { tmp.select(); document.execCommand('copy'); } catch(e){}
       document.body.removeChild(tmp);
-      alert('已复制链接，请回到微信聊天框粘贴发送，再点"在微信中打开"');
+      alert('已复制链接，请回到微信聊天框粘贴发送，再点\u201c在微信中打开\u201d');
     }
   }
   var wxBtn = document.getElementById('wxopen');
   if (wxBtn) wxBtn.addEventListener('click', shareWx);
 
-  // 朗读：给每条卡片加按钮
+  // 朗读：单条 + 全文
   if (!('speechSynthesis' in window)) return;
   var synth = window.speechSynthesis;
-  var current = null;
+  document.body.classList.add('hasglobal');
   var zhVoice = null;
   function pickVoice(){
     var vs = synth.getVoices();
@@ -250,52 +276,132 @@
   pickVoice();
 
   function cleanText(el){
-    // 去掉标签里的 ↗ 等装饰，只读文字
     return el.innerText.replace(/↗/g, '').replace(/\s+/g, ' ').trim();
   }
 
-  function speak(btn){
-    var li = btn.closest('li.card');
-    var t = li ? li.querySelector('.t') : null;
-    var d = li ? li.querySelector('.d') : null;
-    var text = [];
-    if (t) text.push(cleanText(t));
-    if (d) text.push(cleanText(d));
-    var utter = new SpeechSynthesisUtterance(text.join('。'));
+  var gbar = document.getElementById('globalbar');
+  var gstate = document.getElementById('gstate');
+  var gbtn = document.getElementById('gbtn');
+  var fab = document.getElementById('fab');
+  var globalPlaying = false;
+  var queue = [];
+  var qIndex = 0;
+  var activeBtn = null;
+  var READY = '全文朗读已就绪 · 点右下角按钮开始';
+
+  function setUI(playing, text){
+    if (playing){
+      gbar.classList.remove('idle');
+      gbtn.textContent = '⏹ 停止';
+      fab.textContent = '⏹ 停止朗读';
+      fab.classList.add('speaking');
+      if (text) gstate.textContent = text;
+    } else {
+      gbar.classList.add('idle');
+      gbtn.textContent = '▶ 全文朗读';
+      fab.textContent = '▶ 全文朗读';
+      fab.classList.remove('speaking');
+      if (text) gstate.textContent = text; else gstate.textContent = READY;
+    }
+    if (activeBtn){
+      activeBtn.classList.toggle('speaking', playing);
+      activeBtn.textContent = playing ? '⏹' : '🔊';
+    }
+  }
+
+  function startGlobal(){
+    var items = [];
+    document.querySelectorAll('section').forEach(function(sec){
+      var h2 = sec.querySelector('.sec-head h2');
+      if (h2) items.push(cleanText(h2));
+      sec.querySelectorAll('li.card').forEach(function(li){
+        var b = li.querySelector('.row .body') || li;
+        var t = b.querySelector('.t');
+        var d = b.querySelector('.d');
+        var parts = [];
+        if (t) parts.push(cleanText(t));
+        if (d) parts.push(cleanText(d));
+        if (parts.length) items.push(parts.join('。'));
+      });
+    });
+    if (!items.length) return;
+    queue = items; qIndex = 0; globalPlaying = true;
+    setUI(true, '正在朗读 1 / ' + items.length + '：' + items[0].slice(0, 20) + '…');
+    speakNext();
+  }
+
+  function speakNext(){
+    if (!globalPlaying) return;
+    if (qIndex >= queue.length){ endGlobal('朗读完毕 ✅'); return; }
+    var text = queue[qIndex];
+    gstate.textContent = '正在朗读 ' + (qIndex + 1) + ' / ' + queue.length + '：' + text.slice(0, 24) + '…';
+    var utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'zh-CN';
     if (zhVoice) utter.voice = zhVoice;
-    utter.rate = 1.05;
-    utter.pitch = 1;
-    utter.onstart = function(){ btn.classList.add('speaking'); btn.textContent = '⏹ 停止'; };
-    utter.onend = function(){ btn.classList.remove('speaking'); btn.textContent = '🔊 朗读'; };
+    utter.rate = 1.05; utter.pitch = 1;
+    utter.onend = function(){ qIndex++; speakNext(); };
     utter.onerror = utter.onend;
-    // 打断上一条
-    synth.cancel();
-    current = btn;
-    setTimeout(function(){ synth.speak(utter); }, 60);
+    synth.speak(utter);
   }
 
-  function stop(btn){
-    synth.cancel();
-    btn.classList.remove('speaking');
-    btn.textContent = '🔊 朗读';
-    current = null;
+  function endGlobal(msg){
+    globalPlaying = false; queue = []; qIndex = 0;
+    setUI(false, msg);
   }
 
-  // 给每条卡片加朗读按钮
+  function stopGlobal(){
+    globalPlaying = false;
+    synth.cancel();
+    setUI(false, '已停止');
+  }
+
+  function speakOne(btn){
+    var li = btn.closest('li.card');
+    var b = li ? (li.querySelector('.row .body') || li) : null;
+    var t = b ? b.querySelector('.t') : null;
+    var d = b ? b.querySelector('.d') : null;
+    var parts = [];
+    if (t) parts.push(cleanText(t));
+    if (d) parts.push(cleanText(d));
+    if (!parts.length) return;
+    if (globalPlaying) globalPlaying = false;
+    synth.cancel();
+    activeBtn = btn;
+    setUI(true, '朗读中：' + parts[0].slice(0, 24) + '…');
+    var utter = new SpeechSynthesisUtterance(parts.join('。'));
+    utter.lang = 'zh-CN';
+    if (zhVoice) utter.voice = zhVoice;
+    utter.rate = 1.05; utter.pitch = 1;
+    utter.onend = function(){ setUI(false); };
+    utter.onerror = utter.onend;
+    synth.speak(utter);
+  }
+  function stopOne(btn){
+    synth.cancel();
+    activeBtn = null;
+    setUI(false, '已停止');
+  }
+
+  gbtn.addEventListener('click', function(){
+    if (globalPlaying || synth.speaking) stopGlobal(); else startGlobal();
+  });
+  fab.addEventListener('click', function(){
+    if (globalPlaying || synth.speaking) stopGlobal(); else startGlobal();
+  });
+
   document.querySelectorAll('li.card').forEach(function(li){
     var row = document.createElement('div');
     row.className = 'row';
     var body = document.createElement('div');
     body.className = 'body';
-    // 把原有子节点移进 body
     while (li.firstChild) body.appendChild(li.firstChild);
     var btn = document.createElement('button');
     btn.className = 'readbtn';
     btn.type = 'button';
-    btn.textContent = '🔊 朗读';
+    btn.textContent = '🔊';
+    btn.title = '朗读这一条';
     btn.addEventListener('click', function(){
-      if (btn.classList.contains('speaking')) stop(btn); else speak(btn);
+      if (btn.classList.contains('speaking')) stopOne(btn); else speakOne(btn);
     });
     row.appendChild(body);
     row.appendChild(btn);
@@ -303,9 +409,8 @@
     li.appendChild(row);
   });
 
-  // 页面隐藏/离开时停止
   document.addEventListener('visibilitychange', function(){
-    if (document.hidden && synth.speaking) synth.cancel();
+    if (document.hidden && synth.speaking) stopGlobal();
   });
 })();
 </script>
