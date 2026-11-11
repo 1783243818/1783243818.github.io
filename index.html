@@ -270,7 +270,9 @@
   var zhVoice = null;
   function pickVoice(){
     var vs = synth.getVoices();
-    zhVoice = vs.filter(function(v){ return /zh[-_]/i.test(v.lang); })[0] || null;
+    var zv = vs.filter(function(v){ return /zh[-_]/i.test(v.lang); });
+    var nice = zv.filter(function(v){ return /Ting|Hui|Xiaoxiao|Yaoyao|Kangkang|Xiaoyi|Google/i.test(v.name); });
+    zhVoice = (nice[0] || zv[0]) || null;
   }
   if (typeof synth.onvoiceschanged !== 'undefined') synth.onvoiceschanged = pickVoice;
   pickVoice();
@@ -321,7 +323,7 @@
         var parts = [];
         if (t) parts.push(cleanText(t));
         if (d) parts.push(cleanText(d));
-        if (parts.length) items.push(parts.join('。'));
+        if (parts.length) items.push(parts.join('，'));
       });
     });
     if (!items.length) return;
@@ -338,7 +340,7 @@
     var utter = new SpeechSynthesisUtterance(text);
     utter.lang = 'zh-CN';
     if (zhVoice) utter.voice = zhVoice;
-    utter.rate = 1.05; utter.pitch = 1;
+    utter.rate = 0.92; utter.pitch = 1.02;
     utter.onend = function(){ qIndex++; speakNext(); };
     utter.onerror = utter.onend;
     synth.speak(utter);
@@ -368,10 +370,10 @@
     synth.cancel();
     activeBtn = btn;
     setUI(true, '朗读中：' + parts[0].slice(0, 24) + '…');
-    var utter = new SpeechSynthesisUtterance(parts.join('。'));
+    var utter = new SpeechSynthesisUtterance(parts.join('，'));
     utter.lang = 'zh-CN';
     if (zhVoice) utter.voice = zhVoice;
-    utter.rate = 1.05; utter.pitch = 1;
+    utter.rate = 0.92; utter.pitch = 1.02;
     utter.onend = function(){ setUI(false); };
     utter.onerror = utter.onend;
     synth.speak(utter);
