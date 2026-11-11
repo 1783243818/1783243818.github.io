@@ -72,6 +72,15 @@
     margin:22px 2px 12px; display:flex; align-items:center; gap:8px;}
   .sub::after{content:""; flex:1; height:1px; background:var(--line);}
 
+  /* 微信引导条 */
+  .wxbar{display:none; position:sticky; top:0; z-index:50; margin:10px -16px 0;
+    padding:12px 16px; background:#fff8e6; border-bottom:1px solid #f0dfb0;
+    font-size:14.5px; color:#7a5b00; line-height:1.6;}
+  .wxbar a{color:#c77700; font-weight:600; text-decoration:none;}
+  .wxbar .go{display:inline-block; margin-top:8px; background:#07c160; color:#fff;
+    font-size:15px; font-weight:600; padding:10px 18px; border-radius:12px; text-decoration:none;}
+  @media (max-width:700px){ .wxbar{display:block;} }
+
   /* voice read button */
   .row{display:flex; align-items:flex-start; gap:10px;}
   .row .body{flex:1; min-width:0;}
@@ -100,6 +109,13 @@
       阿里拟分拆平头哥上市。
     </p>
   </header>
+
+  <div class="wxbar">
+    <b>📱 在微信里看？</b><br>
+    当前页面脚本被限制，<b>朗读按钮</b>不可用。点击下方按钮用<b>微信自带浏览器</b>打开，即可正常朗读、点链接：
+    <br>
+    <a class="go" href="javascript:void(0)" id="wxopen">🔊 用微信打开（支持朗读）</a>
+  </div>
 
   <nav class="toc">
     <a href="#gh">📦 GitHub</a>
@@ -199,12 +215,29 @@
   <footer>
     内容聚合自公开网络信息 · 点击标题可跳转原文<br>
     每条右侧 <b>🔊 朗读</b> 按钮可用浏览器语音播报（再点一次停止）<br>
-    由 AI 每日 08:00 自动生成 · 固定链接 <a class="lk" href="https://1783243818.github.io/">1783243818.github.io</a><br>
+    由 AI 每日 07:00 自动生成 · 固定链接 <a class="lk" href="https://1783243818.github.io/">1783243818.github.io</a><br>
     2026-11-11
   </footer>
 </div>
 <script>
 (function(){
+  // 微信引导：分享给微信的按钮
+  function shareWx(){
+    var url = location.origin + location.pathname + '?wxopen=1';
+    if (navigator.share && navigator.share.url !== undefined) {
+      navigator.share({ title: 'AI 早报', url: url }).catch(function(){});
+    } else {
+      var tmp = document.createElement('input');
+      tmp.value = url; document.body.appendChild(tmp);
+      try { tmp.select(); document.execCommand('copy'); } catch(e){}
+      document.body.removeChild(tmp);
+      alert('已复制链接，请回到微信聊天框粘贴发送，再点"在微信中打开"');
+    }
+  }
+  var wxBtn = document.getElementById('wxopen');
+  if (wxBtn) wxBtn.addEventListener('click', shareWx);
+
+  // 朗读：给每条卡片加按钮
   if (!('speechSynthesis' in window)) return;
   var synth = window.speechSynthesis;
   var current = null;
